@@ -1,8 +1,8 @@
 // Required packages: Express, Mongoose
 
-const express = require('express');
-const mongoose = require('mongoose');
-require('dotenv').config();
+const express = require("express");
+const mongoose = require("mongoose");
+require("dotenv").config();
 
 // Face Match Game Setup
 function createFaceMatchApp() {
@@ -10,7 +10,7 @@ function createFaceMatchApp() {
   const PORT = 3001;
 
   // Database Setup
-  mongoose.connect('mongodb://localhost/alzheimer-helper', {
+  mongoose.connect("mongodb://localhost/alzheimer-helper", {
     useNewUrlParser: true,
     useUnifiedTopology: true,
   });
@@ -21,7 +21,7 @@ function createFaceMatchApp() {
     userId: mongoose.Schema.Types.ObjectId,
   });
 
-  const Photo = mongoose.model('Photo', PhotoSchema);
+  const Photo = mongoose.model("Photo", PhotoSchema);
 
   // Middleware Setup
   app.use(express.urlencoded({ extended: true }));
@@ -54,14 +54,14 @@ function createFaceMatchApp() {
   const gameResultTracker = new GameResultTracker();
 
   // Routes
-  app.get('/game', async (req, res) => {
+  app.get("/game", async (req, res) => {
     if (!req.isAuthenticated()) {
-      return res.redirect('/signin');
+      return res.redirect("/signin");
     }
 
     const photos = await Photo.find({ userId: req.user.id });
     if (photos.length < 4) {
-      return res.send('Please upload at least 4 photos to start the game.');
+      return res.send("Please upload at least 4 photos to start the game.");
     }
 
     let currentPhoto;
@@ -85,9 +85,9 @@ function createFaceMatchApp() {
     res.send(gameHtml);
   });
 
-  app.post('/check', async (req, res) => {
+  app.post("/check", async (req, res) => {
     if (!req.isAuthenticated()) {
-      return res.redirect('/signin');
+      return res.redirect("/signin");
     }
 
     const { guess } = req.body;
@@ -103,32 +103,41 @@ function createFaceMatchApp() {
       gameResultTracker.addQuestion(false);
     }
 
-    if (gameResultTracker.totalQuestions >= 4 && gameResultTracker.skippedQuestions.length === 0) {
+    if (
+      gameResultTracker.totalQuestions >= 4 &&
+      gameResultTracker.skippedQuestions.length === 0
+    ) {
       if (gameResultTracker.getScorePercentage() < 50) {
-        const sendEmail = require('./send_email');
-        sendEmail('familymember@example.com', 'Alert: Low Score in Face Match Game', 'The user scored below 50% in the face match game. Please check in with them.');
+        const sendEmail = require("./send_email");
+        sendEmail(
+          "familyEmail",
+          "Alert: Low Score in Face Match Game",
+          "The user scored below 50% in the face match game. Please check in with them."
+        );
       }
-      res.redirect('/score');
+      res.redirect("/score");
     } else {
-      res.redirect('/game');
+      res.redirect("/game");
     }
   });
 
-  app.post('/skip', (req, res) => {
+  app.post("/skip", (req, res) => {
     if (!req.isAuthenticated()) {
-      return res.redirect('/signin');
+      return res.redirect("/signin");
     }
 
     gameResultTracker.skipQuestion(req.session.currentPhoto);
-    res.redirect('/game');
+    res.redirect("/game");
   });
 
-  app.get('/score', (req, res) => {
+  app.get("/score", (req, res) => {
     if (!req.isAuthenticated()) {
-      return res.redirect('/signin');
+      return res.redirect("/signin");
     }
 
-    res.send(`Your final score is ${gameResultTracker.getScorePercentage()}%. <a href="/game">Play again</a>`);
+    res.send(
+      `Your final score is ${gameResultTracker.getScorePercentage()}%. <a href="/game">Play again</a>`
+    );
   });
 
   // Server Setup
