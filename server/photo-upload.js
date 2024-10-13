@@ -1,7 +1,7 @@
-// Required packages: Express, Mongoose, Multer, Cloudinary for cloud storage
+// Required packages: Express, Multer, Cloudinary for cloud storage, SQLite3
 
 const express = require('express');
-const mongoose = require('mongoose');
+const sqlite3 = require('sqlite3').verbose();
 const multer = require('multer');
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
@@ -20,18 +20,29 @@ function createPhotoUploadApp() {
   });
 
   // Database Setup
-  mongoose.connect('mongodb://localhost/alzheimer-helper', {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
+  const db = new sqlite3.Database('./alzheimer-helper.db', (err) => {
+    if (err) {
+      console.error('Error opening database:', err.message);
+    } else {
+      console.log('Connected to the SQLite database.');
+    }
   });
 
-  const PhotoSchema = new mongoose.Schema({
-    url: String,
-    label: String,
-    userId: mongoose.Schema.Types.ObjectId,
-  });
+  // Create Photos Table
+  const createPhotosTableQuery = `
+    CREATE TABLE IF NOT EXISTS Photos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT,
+      label TEXT,
+      userId INTEGER
+    );
+  `;
 
-  const Photo = mongoose.model('Photo', PhotoSchema);
+  db.run(createPhotosTableQuery, (err) => {
+    if (err) {
+      console.error('Error creating Photos table:', err.message);
+    }
+  });
 
   // Multer Setup for File Uploads to Cloudinary
   const storage = new CloudinaryStorage({
@@ -55,20 +66,25 @@ function createPhotoUploadApp() {
     res.send('<form action="/upload" method="post" enctype="multipart/form-data">Photo: <input type="file" name="photo"><br>Label (Name of the person in the photo): <input type="text" name="label"><br><input type="submit"></form>');
   });
 
-  app.post('/upload', upload.single('photo'), async (req, res) => {
+  app.post('/upload', upload.single('photo'), (req, res) => {
     if (!req.isAuthenticated()) {
       return res.redirect('/signin');
     }
 
     const { label } = req.body;
-    const photo = new Photo({
-      url: req.file.path,
-      label,
-      userId: req.user.id,
-    });
-    await photo.save();
+    const userId = req.user.id;
+    const url = req.file.path;
 
-    res.redirect('/game');
+    db.run(
+      `INSERT INTO Photos (url, label, userId) VALUES (?, ?, ?)`,
+      [url, label, userId],
+      function (err) {
+        if (err) {
+          return res.send('Error saving photo: ' + err.message);
+        }
+        res.redirect('/game');
+      }
+    );
   });
 
   // Server Setup

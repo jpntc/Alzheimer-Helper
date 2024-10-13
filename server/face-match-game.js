@@ -1,7 +1,7 @@
-// Required packages: Express, Mongoose
+// Required packages: Express, SQLite3
 
 const express = require("express");
-const mongoose = require("mongoose");
+const sqlite3 = require("sqlite3").verbose();
 require("dotenv").config();
 
 // Face Match Game Setup
@@ -10,18 +10,29 @@ function createFaceMatchApp() {
   const PORT = 3001;
 
   // Database Setup
-  mongoose.connect("mongodb://localhost/alzheimer-helper", {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
+  const db = new sqlite3.Database("./alzheimer-helper.db", (err) => {
+    if (err) {
+      console.error("Error opening database:", err.message);
+    } else {
+      console.log("Connected to the SQLite database.");
+    }
   });
 
-  const PhotoSchema = new mongoose.Schema({
-    url: String,
-    label: String,
-    userId: mongoose.Schema.Types.ObjectId,
-  });
+  // Create Photos Table
+  const createPhotosTableQuery = `
+    CREATE TABLE IF NOT EXISTS Photos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      url TEXT,
+      label TEXT,
+      userId INTEGER
+    );
+  `;
 
-  const Photo = mongoose.model("Photo", PhotoSchema);
+  db.run(createPhotosTableQuery, (err) => {
+    if (err) {
+      console.error("Error creating Photos table:", err.message);
+    }
+  });
 
   // Middleware Setup
   app.use(express.urlencoded({ extended: true }));
@@ -54,71 +65,80 @@ function createFaceMatchApp() {
   const gameResultTracker = new GameResultTracker();
 
   // Routes
-  app.get("/game", async (req, res) => {
+  app.get("/game", (req, res) => {
     if (!req.isAuthenticated()) {
       return res.redirect("/signin");
     }
 
-    const photos = await Photo.find({ userId: req.user.id });
-    if (photos.length < 4) {
-      return res.send("Please upload at least 4 photos to start the game.");
-    }
+    db.all(`SELECT * FROM Photos WHERE userId = ?`, [req.user.id], (err, photos) => {
+      if (err) {
+        return res.send("Error retrieving photos: " + err.message);
+      }
 
-    let currentPhoto;
-    if (gameResultTracker.skippedQuestions.length > 0) {
-      currentPhoto = gameResultTracker.skippedQuestions.shift();
-    } else {
-      const randomIndex = Math.floor(Math.random() * photos.length);
-      currentPhoto = photos[randomIndex];
-    }
+      if (photos.length < 4) {
+        return res.send("Please upload at least 4 photos to start the game.");
+      }
 
-    const shuffledPhotos = photos.sort(() => 0.5 - Math.random()).slice(0, 4);
+      let currentPhoto;
+      if (gameResultTracker.skippedQuestions.length > 0) {
+        currentPhoto = gameResultTracker.skippedQuestions.shift();
+      } else {
+        const randomIndex = Math.floor(Math.random() * photos.length);
+        currentPhoto = photos[randomIndex];
+      }
 
-    let gameHtml = `<p>Who is ${currentPhoto.label}?</p>`;
-    shuffledPhotos.forEach((photo) => {
-      gameHtml += `<img src="${photo.url}" width="100"><form action="/check" method="post"><input type="hidden" name="guess" value="${photo._id}"><button type="submit">Select</button></form>`;
+      const shuffledPhotos = photos.sort(() => 0.5 - Math.random()).slice(0, 4);
+
+      let gameHtml = `<p>Who is ${currentPhoto.label}?</p>`;
+      shuffledPhotos.forEach((photo) => {
+        gameHtml += `<img src="${photo.url}" width="100"><form action="/check" method="post"><input type="hidden" name="guess" value="${photo.id}"><button type="submit">Select</button></form>`;
+      });
+      gameHtml += `<form action="/skip" method="post"><button type="submit">Skip</button></form>`;
+
+      req.session.correctLabel = currentPhoto.label;
+      req.session.currentPhoto = currentPhoto;
+      res.send(gameHtml);
     });
-    gameHtml += `<form action="/skip" method="post"><button type="submit">Skip</button></form>`;
-
-    req.session.correctLabel = currentPhoto.label;
-    req.session.currentPhoto = currentPhoto;
-    res.send(gameHtml);
   });
 
-  app.post("/check", async (req, res) => {
+  app.post("/check", (req, res) => {
     if (!req.isAuthenticated()) {
       return res.redirect("/signin");
     }
 
     const { guess } = req.body;
-    const photo = await Photo.findById(guess);
-
-    if (!photo) {
-      return res.send('Photo not found. <a href="/game">Try again</a>');
-    }
-
-    if (photo.label === req.session.correctLabel) {
-      gameResultTracker.addQuestion(true);
-    } else {
-      gameResultTracker.addQuestion(false);
-    }
-
-    if (
-      gameResultTracker.totalQuestions >= 4 &&
-      gameResultTracker.skippedQuestions.length === 0
-    ) {
-      if (gameResultTracker.getScorePercentage() < 50) {
-        const sendEmail = require("./send_email");
-        sendEmail(
-          "familyEmail",
-          "Alert: Low Score in Face Match Game",
-          "The user scored below 50% in the face match game. Please check in with them."
-        );
+    db.get(`SELECT * FROM Photos WHERE id = ?`, [guess], (err, photo) => {
+      if (err) {
+        return res.send("Error retrieving photo: " + err.message);
       }
-      res.redirect("/score");
-    } else {
-      res.redirect("/game");
-    }
+
+      if (!photo) {
+        return res.send('Photo not found. <a href="/game">Try again</a>');
+      }
+
+      if (photo.label === req.session.correctLabel) {
+        gameResultTracker.addQuestion(true);
+      } else {
+        gameResultTracker.addQuestion(false);
+      }
+
+      if (
+        gameResultTracker.totalQuestions >= 4 &&
+        gameResultTracker.skippedQuestions.length === 0
+      ) {
+        if (gameResultTracker.getScorePercentage() < 50) {
+          const sendEmail = require("./send_email");
+          sendEmail(
+            "familyEmail",
+            "Alert: Low Score in Face Match Game",
+            "The user scored below 50% in the face match game. Please check in with them."
+          );
+        }
+        res.redirect("/score");
+      } else {
+        res.redirect("/game");
+      }
+    });
   });
 
   app.post("/skip", (req, res) => {
