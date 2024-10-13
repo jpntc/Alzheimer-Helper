@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "alzhimer-helper",
-    "slug": "alzheimer-helper",
+    "name": "client",
+    "slug": "client",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -22,12 +22,6 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    },
-    "extra": {
-      "eas": {
-        "projectId": "206c268a-8024-438b-85c3-3192a022f0dd"
-      }
-    },
-    "owner": "jpntc"
+    }
   }
 }
