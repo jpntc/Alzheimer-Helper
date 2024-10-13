@@ -10,7 +10,7 @@ export default function HomeScreen({ navigation }) {
 
   return (
     <ImageBackground
-      source={require('/Users/christophervidal/Desktop/alzh/wowProject/assets/world-environment-day-concept-abstract-600nw-429357529.webp')}
+      source={require('')}
       style={styles.background}
       resizeMode="cover"
     >
